@@ -4,6 +4,9 @@ from torch.autograd import grad as torch_grad
 import time
 import imageio
 from imageio import imread
+from torchvision.utils import make_grid
+
+import numpy as np
 
 from datasets import get_mnist_dataloaders
 from visualization import show_images
@@ -69,41 +72,40 @@ def train_epoch(D, G, D_solver, G_solver, batch_size, data_loader, gradient_pena
             train_generator(D, G, G_solver, batch_size, data, losses, noise_dimension, data_type)
 
 
-def train(D, G, D_solver, G_solver, batch_size, epoch_count, noise_dimension, data_type):
+def train(D, G, D_solver, G_solver, batch_size, epoch_count, noise_dimension, data_type, generate_gif=False):
     """
     Main training loop for GlyphGAN
     """
 
     train_loader, _ = get_mnist_dataloaders(batch_size=batch_size)
 
-    # Use a fixed seed to monitor improvement over time!
-    # This is only used for debugging/visual purposes
-    fixed_seed = generate_training_noise(128, noise_dimension, data_type)
-    # training_progress_images = []
-    images = G(fixed_seed)
-    print(images.shape)
-    show_images(images.type(data_type))
+    if generate_gif:
+      fixed_seed = generate_training_noise(128, noise_dimension, data_type)
+      sampled_images = G(fixed_seed)
+      training_progress_images = []
+      show_images(sampled_images.type(data_type))
 
     losses = {'G': [], 'D': [], 'GP': [], 'gradient_norm': []}
     start_time = time.time()
     for epoch in range(epoch_count):
         epoch_start_time = time.time()
-        print('Epoch #{} Starting'.format(epoch + 1))
+
         train_epoch(D, G, D_solver, G_solver, batch_size, train_loader, 10, losses, noise_dimension, data_type)
-        print('Epoch #{} total time: #{:.2}'.format(epoch + 1, (time.time() - epoch_start_time)))
+        print("{} --- G: {:4} | D: {:.4} | GP: {:.4} | GNorm: {:.4} --- Total time: {}".format(int(epoch + 1) , losses['G'][-1], losses['D'][-1], losses['GP'][-1], losses['gradient_norm'][-1], (time.time() - epoch_start_time)))
 
-        print("D: {}".format(losses['D'][-1]))
-        print("GP: {}".format(losses['GP'][-1]))
-        print("Gradient norm: {}".format(losses['gradient_norm'][-1]))
-        print("G: {}".format(losses['G'][-1]))
+        if generate_gif:
+          # Sample our generator using the fixed seed -- we can watch the improvement over time!
+          sampled_images = G(fixed_seed)
+          show_images(sampled_images)
 
-        # Sample our generator using the fixed seed -- we can watch the improvement over time!
-        show_images(G(fixed_seed))
-        # image_grid = make_grid(generate_and_show_images(G, fixed_seed))
-        # training_progress_images.append(np.transpose(image_grid.numpy(), (1, 2, 0)))
+          # Save the images for a gif!
+          image_grid = make_grid(sampled_images.detach().cpu())
+          training_progress_images.append(np.transpose(image_grid.numpy(), (1, 2, 0)))
 
-    print('Total training time: #{:.2}'.format((time.time() - start_time)))
-    # imageio.mimsave('./training_{}_epochs.gif'.format(epoch_count), training_progress_images)
+    print('Total training time: #{}'.format(time.time() - start_time))
+
+    if generate_gif:
+      imageio.mimsave('./training_{}_epochs.gif'.format(epoch_count), training_progress_images)
 
 
 # Helper Functions
