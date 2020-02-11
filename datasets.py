@@ -21,3 +21,12 @@ def get_mnist_dataloaders(batch_size=128):
     train_loader = DataLoader(train_data, batch_size=batch_size, shuffle=True)
     test_loader = DataLoader(test_data, batch_size=batch_size, shuffle=True)
     return train_loader, test_loader
+
+def get_same_index(target, label):
+    label_indices = []
+
+    for i in range(len(target)):
+        if target[i] == label:
+            label_indices.append(i)
+
+    return label_indices
