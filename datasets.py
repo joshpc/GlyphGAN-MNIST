@@ -26,6 +26,8 @@ def get_same_index(target, label):
     label_indices = []
 
     for i in range(len(target)):
+        print(label)
+        print(target[i])
         if target[i] == label:
             label_indices.append(i)
 

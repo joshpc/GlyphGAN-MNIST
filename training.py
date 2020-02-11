@@ -8,7 +8,7 @@ from torchvision.utils import make_grid
 
 import numpy as np
 
-from datasets import get_mnist_dataloaders
+from datasets import get_mnist_dataloaders, get_same_index
 from visualization import show_images
 
 # Training Functions
@@ -78,12 +78,18 @@ def train_epoch(D, G, D_solver, G_solver, batch_size, data_loader, gradient_pena
             if len(data) % batch_size != 0:
                 continue
 
+            # HACK: Our model operates on batches of batch_size. Ideally, we would have a data loader that returns us the precise classes and examples but until then
+            # we iterate through our model and do the batching via CPU. If this is a bottleneck, we change it.
+            indices = get_same_index(data, character_class)
+            print(indices)
+
+
             steps += 1
 
-            train_critic(D, G, D_solver, batch_size, noise_dimension, data, gradient_penalty_weight, losses, noise_dimension, data_type)
+            # train_critic(D, G, D_solver, batch_size, noise_dimension, data, gradient_penalty_weight, losses, noise_dimension, data_type)
 
-            if steps % critic_iterations == 0:
-                train_generator(D, G, G_solver, batch_size, data, losses, noise_dimension, data_type)
+            # if steps % critic_iterations == 0:
+            #     train_generator(D, G, G_solver, batch_size, data, losses, noise_dimension, data_type)
 
 
 def train(D, G, D_solver, G_solver, batch_size, epoch_count, noise_dimension, data_type, generate_gif=False):
