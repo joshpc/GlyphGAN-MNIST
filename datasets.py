@@ -25,9 +25,8 @@ def get_mnist_dataloaders(batch_size=128):
 def get_same_index(target, label):
     label_indices = []
 
+    print(target)
     for i in range(len(target)):
-        print(label)
-        print(target[i])
         if target[i] == label:
             label_indices.append(i)
 

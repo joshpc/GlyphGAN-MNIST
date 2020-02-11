@@ -80,7 +80,15 @@ def train_epoch(D, G, D_solver, G_solver, batch_size, data_loader, gradient_pena
 
             # HACK: Our model operates on batches of batch_size. Ideally, we would have a data loader that returns us the precise classes and examples but until then
             # we iterate through our model and do the batching via CPU. If this is a bottleneck, we change it.
-            indices = get_same_index(data, character_class)
+
+            ## Okay so the training loop here is a little more awkward. We're going to do a few things:
+            # 1) Loop through the data_loader until we get at least `batch_size` samples
+            # 2) Maintain the index in which we stopped
+            # 3) Run training
+            # 4) Flsuh out the first `batch_size` samples
+            # 5) Then, continue gathering. Repeat 1-4 until we're out of samples.
+            # 6) Then, move to the next character class.
+            indices = get_same_index(labels, character_class)
             print(indices)
 
 
