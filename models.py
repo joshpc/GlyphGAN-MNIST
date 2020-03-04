@@ -4,7 +4,7 @@ import torch.optim as optim
 
 from model_util import Unflatten, Flatten
 
-def build_glyph_gan_generator(image_size=(32, 32, 1), noise_dimension=100, dimension=16):
+def build_glyph_gan_generator(image_size=(32, 32, 1), noise_dimension=100, character_class_count=10, dimension=16):
   """
   PyTorch model implementing the GlyphGAN generator.
 
@@ -19,37 +19,35 @@ def build_glyph_gan_generator(image_size=(32, 32, 1), noise_dimension=100, dimen
   output_size = int(8 * dimension * feature_sizes[0] * feature_sizes[1])
 
   return nn.Sequential(
-    nn.Linear(noise_dimension, output_size),
-    nn.ReLU(),
-
+    nn.Linear(noise_dimension + character_class_count, output_size),
     Unflatten(C=int(8 * dimension), W=int(feature_sizes[0]), H=int(feature_sizes[1])),
+    nn.BatchNorm2d(8 * dimension),
 
     # Fractionally Strided Conv 1
-    nn.ConvTranspose2d(8 * dimension , 4 * dimension, 4, 2, 1),
-    nn.ReLU(),
+    nn.ConvTranspose2d(8 * dimension, 4 * dimension, 4, 2, 1),
     nn.BatchNorm2d(4 * dimension),
+    nn.ReLU(),
 
     # Fractionally Strided Conv 2
     nn.ConvTranspose2d(4 * dimension, 2 * dimension, 4, 2, 1),
-    nn.ReLU(),
     nn.BatchNorm2d(2 * dimension),
+    nn.ReLU(),
 
     # Fractionally Strided Conv 3
     nn.ConvTranspose2d(2 * dimension, dimension, 4, 2, 1),
-    nn.ReLU(),
     nn.BatchNorm2d(dimension),
+    nn.ReLU(),
 
     # Fractionally Strided Conv 4
     nn.ConvTranspose2d(dimension, image_size[2], 4, 2, 1),
     nn.Sigmoid()
   )
 
-def build_glyph_gan_critic(batch_size, image_size=(32, 32), dimension=16):
+def build_glyph_gan_critic(image_size=(32, 32), dimension=16):
   """
   PyTorch model implementing the GlyphGAN critic.
 
   Inputs:
-  - `batch_size`: The amount of images included in the set
   - `image_size`: The size of the images (W, H) tuple. (32, 32)
   - `dimension`: The dpeth of the noise, defaults to 16.
   """
@@ -67,7 +65,7 @@ def build_glyph_gan_critic(batch_size, image_size=(32, 32), dimension=16):
     nn.LeakyReLU(0.2),
 
     nn.Conv2d(4 * dimension, 8 * dimension, 4, 2, 1),
-    nn.Sigmoid(),
+    nn.LeakyReLU(0.2),
 
     Flatten(),
 
@@ -75,7 +73,7 @@ def build_glyph_gan_critic(batch_size, image_size=(32, 32), dimension=16):
     nn.Sigmoid()
   )
 
-def get_optimizer(model, learning_rate=2e-4, beta1=0.9, beta2=0.99):
+def get_optimizer(model, learning_rate=2e-4, beta1=0.5, beta2=0.99):
     """
     Adam optimizer for model
 

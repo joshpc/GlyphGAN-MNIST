@@ -8,25 +8,37 @@ from torchvision.utils import make_grid
 
 import numpy as np
 
-from datasets import get_mnist_dataloaders, get_same_index
+from datasets import get_mnist_dataloaders
 from visualization import show_images
+
+import torch.nn as nn
 
 # Training Functions
 
+def initialize_weights(m):
+    if isinstance(m, nn.Linear) or isinstance(m, nn.ConvTranspose2d) or isinstance(m, nn.Conv2d):
+        nn.init.xavier_uniform_(m.weight.data)
 
-def train_critic(D, G, D_solver, batch_size, noise_size, data, gradient_penalty_weight, losses, noise_dimension, data_type):
+def train_critic(D, G, D_solver, batch_size, noise_size, data, class_vectors, gradient_penalty_weight, losses, noise_dimension, data_type):
     """
     Trains the critic (discriminator.) This is a single iteration step.
     """
     # Prepare our data
-    generated_data = G(generate_training_noise(batch_size, noise_dimension, data_type))
+    # JOSH: All samples were turning into the same things. Likely because how we're training it. However, it seems that the one-hot
+    # vector isn't sufficient to guide it away.
+
+    # 1) Verify that we're doing it right concat-wise (one-hot + style)
+    # 2) Double check that we're correctly picking the right samples!
+
+    generated_data = G(generate_training_noise(batch_size, noise_dimension, data_type, class_vectors))
 
     # Forward Pass - Calculate probabilities on real and generated data
-    d_real = D(data.type(data_type))
+    real_data = data.type(data_type)
+    d_real = D(real_data)
     d_generated = D(generated_data)
 
     # Calculate gradient penalty
-    gradient_penalty = calculate_gradient_penalty(D, data.type(data_type), generated_data, batch_size, gradient_penalty_weight, losses, data_type)
+    gradient_penalty = calculate_gradient_penalty(D, real_data, generated_data, batch_size, gradient_penalty_weight, losses, data_type)
     losses['GP'].append(gradient_penalty.data)
 
     # TODO: Does this go here or at the start?
@@ -40,14 +52,14 @@ def train_critic(D, G, D_solver, batch_size, noise_size, data, gradient_penalty_
     D_solver.step()
 
 
-def train_generator(D, G, G_solver, batch_size, data, losses, noise_dimension, data_type):
+def train_generator(D, G, G_solver, batch_size, data, class_vectors, losses, noise_dimension, data_type):
     """
     Trains the generator. This is a single iteration step.
     """
     G_solver.zero_grad()
 
     # Prepare our data
-    generated_data = G(generate_training_noise(batch_size, noise_dimension, data_type))
+    generated_data = G(generate_training_noise(batch_size, noise_dimension, data_type, class_vectors))
 
     # Forward Pass
     d_generated = D(generated_data)
@@ -58,57 +70,53 @@ def train_generator(D, G, G_solver, batch_size, data, losses, noise_dimension, d
 
     G_solver.step()
 
-
-def train_epoch(D, G, D_solver, G_solver, batch_size, data_loader, gradient_penalty_weight, losses, noise_dimension, data_type):
+def train_epoch(D, G, D_solver, G_solver, character_classes, batch_size, data_loaders, gradient_penalty_weight, losses, noise_dimension, data_type, critic_iterations, all_loader):
     steps = 0
-    critic_iterations = 5
 
-    # Each epoch must go through each character class
-    character_classes = torch.arange(10)
     for character_class in character_classes:
-        class_vector = torch.zeros(len(character_classes))
-        class_vector[character_class] = 1
+        class_vectors = torch.zeros((batch_size, len(character_classes))).type(data_type)
+        class_vectors[:, character_class] = 1
 
-        # JOSH: So the problem right now is that we need to get data in a very specific format.
-        # The training algorithm requires us to load all of the labels in a very specific way:
-            # We can use torch.utils.data.sampler.SubsetRandomSampler(indices)
-        # However, we need to batch these! Perhaps we do the batching ourselves.
+        generator_iterations = 0
+        iterations = 0
 
-        for data, labels in data_loader:
+        for data, labels in data_loaders[character_class]:
             if len(data) % batch_size != 0:
                 continue
 
-            # HACK: Our model operates on batches of batch_size. Ideally, we would have a data loader that returns us the precise classes and examples but until then
-            # we iterate through our model and do the batching via CPU. If this is a bottleneck, we change it.
-
-            ## Okay so the training loop here is a little more awkward. We're going to do a few things:
-            # 1) Loop through the data_loader until we get at least `batch_size` samples
-            # 2) Maintain the index in which we stopped
-            # 3) Run training
-            # 4) Flsuh out the first `batch_size` samples
-            # 5) Then, continue gathering. Repeat 1-4 until we're out of samples.
-            # 6) Then, move to the next character class.
-            indices = get_same_index(labels, character_class)
-            print(indices)
-
-
             steps += 1
+            iterations += 1
 
-            # train_critic(D, G, D_solver, batch_size, noise_dimension, data, gradient_penalty_weight, losses, noise_dimension, data_type)
+            train_critic(D, G, D_solver, batch_size, noise_dimension, data, class_vectors, gradient_penalty_weight, losses, noise_dimension, data_type)
 
-            # if steps % critic_iterations == 0:
-            #     train_generator(D, G, G_solver, batch_size, data, losses, noise_dimension, data_type)
+            if steps % critic_iterations == 0:
+                generator_iterations += 1
+                train_generator(D, G, G_solver, batch_size, data, class_vectors, losses, noise_dimension, data_type)
 
+            # print("{} generator iterations over {} iterations".format(generator_iterations, iterations))
 
-def train(D, G, D_solver, G_solver, batch_size, epoch_count, noise_dimension, data_type, generate_gif=False):
+def train(D, G, D_solver, G_solver, batch_size, epoch_count, noise_dimension, data_type, critic_iterations, generate_gif=False):
     """
     Main training loop for GlyphGAN
+
+    - Inputs:
+    - `D` The Discriminator (Critic)
+    - `G` The Generator
+    - `D_solver` optimizer for D
+    - `G_solver` optimizer for G
+    - `epoch_count` the number of epochs to run this training loop. Each epoch will pass through the data once, training the discriminator each time. It will, every `critic_iterations`, also train the generator.
     """
 
-    train_loader, _ = get_mnist_dataloaders(batch_size=batch_size)
+    character_classes = np.arange(10)
+
+    train_loaders, _, all_loader = get_mnist_dataloaders(batch_size=batch_size, character_classes=character_classes)
 
     if generate_gif:
-        fixed_seed = generate_training_noise(128, noise_dimension, data_type)
+        class_vectors = torch.zeros((batch_size, len(character_classes))).type(data_type)
+        for i in range(batch_size):
+            class_vectors[i, i % len(character_classes)] = 1
+
+        fixed_seed = generate_training_noise(batch_size, noise_dimension, data_type, class_vectors)
         sampled_images = G(fixed_seed)
         training_progress_images = []
         show_images(sampled_images.type(data_type))
@@ -119,7 +127,7 @@ def train(D, G, D_solver, G_solver, batch_size, epoch_count, noise_dimension, da
     for epoch in range(epoch_count):
         epoch_start_time = time.time()
 
-        train_epoch(D, G, D_solver, G_solver, batch_size, train_loader, 10, losses, noise_dimension, data_type)
+        train_epoch(D, G, D_solver, G_solver, character_classes, batch_size, train_loaders, 10, losses, noise_dimension, data_type, critic_iterations, all_loader)
         print("{} --- G: {:4} | D: {:.4} | GP: {:.4} | GNorm: {:.4} --- Total time: {}".format(int(epoch + 1), losses['G'][-1], losses['D'][-1], losses['GP'][-1], losses['gradient_norm'][-1], (time.time() - epoch_start_time)))
 
         if generate_gif:
@@ -140,9 +148,9 @@ def train(D, G, D_solver, G_solver, batch_size, epoch_count, noise_dimension, da
 
 # Helper Functions
 
-def generate_training_noise(batch_size, noise_dimension, data_type):
-    return torch.randn((batch_size, noise_dimension)).type(data_type)
-
+def generate_training_noise(batch_size, noise_dimension, data_type, class_vectors):
+    noise = torch.randn((batch_size, noise_dimension)).type(data_type)
+    return torch.cat((class_vectors, noise), dim=1)
 
 def one_hot_encoding(classes, classes_count):
     batch_size = len(classes)

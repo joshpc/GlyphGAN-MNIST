@@ -22,7 +22,7 @@ def show_images(generator_output, image_count=16):
       plot.axis('off')
       ax.set_xticklabels([])
       ax.set_yticklabels([])
-      ax.set_aspect('equal')
+      # ax.set_aspect('equal')
       plot.imshow(img.reshape([sqrtimg,sqrtimg]))
 
   plot.show()
