@@ -4,6 +4,8 @@ Experiments with machine learning. This particular project implements the [Glyph
 
 ## Setup
 
+_Disclaimer: Mileage may vary. This was an afterthought! Sorry._
+
 - Requires Python 3, Jupyter
 - Requires: `pytorch`, `imageio`, `torchvision`, `matplotlib`.
 
