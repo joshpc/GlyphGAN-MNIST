@@ -24,12 +24,6 @@ def train_critic(D, G, D_solver, batch_size, noise_size, data, class_vectors, gr
     Trains the critic (discriminator.) This is a single iteration step.
     """
     # Prepare our data
-    # JOSH: All samples were turning into the same things. Likely because how we're training it. However, it seems that the one-hot
-    # vector isn't sufficient to guide it away.
-
-    # 1) Verify that we're doing it right concat-wise (one-hot + style)
-    # 2) Double check that we're correctly picking the right samples!
-
     generated_data = G(generate_training_noise(batch_size, noise_dimension, data_type, class_vectors))
 
     # Forward Pass - Calculate probabilities on real and generated data
